@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/curl_helper.php';
+
 const DEFAULT_MAX_FILE_SIZE = 819200;
 
 $maxFileSize = getenv('MAX_FILE_SIZE', true);
@@ -13,16 +15,18 @@ define('MAX_FILE_SIZE', $maxFileSize);
 define('MISSING_TIMEZONES_FILE', __DIR__ . '/missing_timezones');
 
 // Main execution
-try {
-    $icsUrl = getIcsUrl();
-    validateUrl($icsUrl);
-    validateFileContent($icsUrl);
-    $icsContent = fetchIcsContent($icsUrl, MAX_FILE_SIZE);
-    $missingTimezones = readMissingTimezones(MISSING_TIMEZONES_FILE);
-    $modifiedIcsContent = insertMissingTimezones($icsContent, $missingTimezones);
-    outputIcsContent($modifiedIcsContent);
-} catch (Exception $e) {
-    die('Error: ' . $e->getMessage());
+if (!defined('TESTING')) {
+    try {
+        $icsUrl = getIcsUrl();
+        validateUrl($icsUrl);
+        validateFileContent($icsUrl);
+        $icsContent = fetchIcsContent($icsUrl, MAX_FILE_SIZE);
+        $missingTimezones = readMissingTimezones(MISSING_TIMEZONES_FILE);
+        $modifiedIcsContent = insertMissingTimezones($icsContent, $missingTimezones);
+        outputIcsContent($modifiedIcsContent);
+    } catch (Exception $e) {
+        die('Error: ' . $e->getMessage());
+    }
 }
 
 // Function to get the ICS URL from the query parameter
@@ -86,6 +90,9 @@ function validateFileContent($url)
     };
 
     curl_setopt($ch, CURLOPT_FAILONERROR, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+    curl_setopt($ch, CURLOPT_USERAGENT, CURL_USERAGENT);
     curl_setopt($ch, CURLOPT_WRITEFUNCTION, $writeFunction);
     curl_setopt($ch, CURLOPT_RANGE, '0-' . ($maxBytes - 1));
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
@@ -134,6 +141,9 @@ function fetchIcsContent($url, $maxFileSize)
     };
 
     curl_setopt($ch, CURLOPT_FAILONERROR, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+    curl_setopt($ch, CURLOPT_USERAGENT, CURL_USERAGENT);
     curl_setopt($ch, CURLOPT_WRITEFUNCTION, $writeFunction);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // 10 seconds to connect
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);        // 30 seconds max execution time
@@ -177,20 +187,32 @@ function insertMissingTimezones($icsContent, $missingTimezones)
 {
     $pos = strpos($icsContent, 'BEGIN:VEVENT');
     if ($pos === false) {
-        throw new Exception('No events found in calendar.');
+        // Calendar has no events yet; insert before END:VCALENDAR instead.
+        $pos = strpos($icsContent, 'END:VCALENDAR');
+        if ($pos === false) {
+            throw new Exception('Invalid ICS file: END:VCALENDAR not found.');
+        }
     }
 
-    $modifiedIcsContent = substr($icsContent, 0, $pos) . $missingTimezones . "\n" . substr($icsContent, $pos);
+    return substr($icsContent, 0, $pos) . $missingTimezones . "\n" . substr($icsContent, $pos);
+}
 
-    return $modifiedIcsContent;
+// Returns the HTTP headers that should be sent with the ICS response.
+function icsHeaders(): array
+{
+    return [
+        'Content-Type: text/calendar; charset=utf-8',
+        'Content-Disposition: attachment; filename="modified_calendar.ics"',
+        'Cache-Control: no-cache, must-revalidate',
+    ];
 }
 
 // Function to output the modified ICS content with appropriate headers
 function outputIcsContent($modifiedIcsContent)
 {
-    // Now that everything is validated and modified, set the content type headers
-    header('Content-Type: text/calendar; charset=utf-8');
-    header('Content-Disposition: attachment; filename="modified_calendar.ics"');
+    foreach (icsHeaders() as $h) {
+        header($h);
+    }
 
     echo $modifiedIcsContent;
 }

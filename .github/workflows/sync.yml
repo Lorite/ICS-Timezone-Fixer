@@ -1,4 +1,4 @@
-name: Notify Sync Service
+name: Test
 
 on:
   push:
@@ -7,39 +7,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  notify:
+  test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl xxd
-          
-      - name: Trigger Sync Service
-        run: |
-          # Step 1: Fetch the challenge
-          curl -ks -A "Mozilla/5.0" https://ics-changer.great-site.net/.sync.php -o challenge.html
+      - uses: actions/checkout@v4
 
-          # Step 2: Extract JavaScript dynamic values for `a`, `b`, and `c` using `sed`
-          A=$(sed -n 's/.*a=toNumbers("\([a-f0-9]\{32\}\)").*/\1/p' challenge.html)
-          B=$(sed -n 's/.*b=toNumbers("\([a-f0-9]\{32\}\)").*/\1/p' challenge.html)
-          C=$(sed -n 's/.*c=toNumbers("\([a-f0-9]\{32\}\)").*/\1/p' challenge.html)
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
 
-          if [[ -z "$A" || -z "$B" || -z "$C" ]]; then
-              echo "Failed to extract values for 'a', 'b', or 'c'."
-              exit 1
-          fi
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist -q
 
-          # Step 3: Decrypt using AES-128-CBC with no padding
-          DECRYPTED_COOKIE=$(echo "$C" | xxd -r -p | \
-              openssl enc -d -aes-128-cbc -nopad -K "$A" -iv "$B" 2>/dev/null | \
-              xxd -p -c9999)
-
-          if [ -z "$DECRYPTED_COOKIE" ]; then
-              echo "Decryption failed. Please check the values and try again."
-              exit 1
-          fi
-
-          # Step 4: Access the target page
-          curl -kb "__test=$DECRYPTED_COOKIE" -A "Mozilla/5.0" https://ics-changer.great-site.net/.sync.php
+      - name: Run tests
+        run: vendor/bin/phpunit
