@@ -18,4 +18,5 @@ services:
       MAX_FILE_SIZE: 1024000
     volumes:
       - ./index.php:/var/www/html/index.php
+      - ./curl_helper.php:/var/www/html/curl_helper.php
       - ./missing_timezones:/var/www/html/missing_timezones
