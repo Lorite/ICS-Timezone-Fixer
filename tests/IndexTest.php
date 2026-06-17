@@ -153,6 +153,49 @@ class IndexTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // normalizeTimezoneIds
+    // -------------------------------------------------------------------------
+
+    public function testNormalizeTimezoneIds_stripsQuotesFromTzid(): void
+    {
+        $ics = "DTSTART;TZID=\"W. Europe Standard Time\":20260617T110000";
+        $result = normalizeTimezoneIds($ics);
+        $this->assertStringContainsString('TZID=W. Europe Standard Time', $result);
+        $this->assertStringNotContainsString('TZID="', $result);
+    }
+
+    public function testNormalizeTimezoneIds_mapsDisplayNameToCanonical(): void
+    {
+        $ics = 'DTSTART;TZID="(UTC+01:00) Brussels, Copenhagen, Madrid, Paris":20260617T110000';
+        $result = normalizeTimezoneIds($ics);
+        $this->assertStringContainsString('TZID=Romance Standard Time', $result);
+        $this->assertStringNotContainsString('(UTC+01:00) Brussels', $result);
+    }
+
+    public function testNormalizeTimezoneIds_preservesUnknownTzid(): void
+    {
+        $ics = 'DTSTART;TZID="Some Unknown Timezone":20260617T110000';
+        $result = normalizeTimezoneIds($ics);
+        $this->assertStringContainsString('TZID=Some Unknown Timezone', $result);
+        $this->assertStringNotContainsString('TZID="', $result);
+    }
+
+    public function testNormalizeTimezoneIds_handlesMultipleProperties(): void
+    {
+        $ics = "DTSTART;TZID=\"(UTC+01:00) Brussels, Copenhagen, Madrid, Paris\":20260617T110000\r\n"
+             . "DTEND;TZID=\"(UTC+01:00) Brussels, Copenhagen, Madrid, Paris\":20260617T112500";
+        $result = normalizeTimezoneIds($ics);
+        $this->assertSame(2, substr_count($result, 'TZID=Romance Standard Time'));
+    }
+
+    public function testNormalizeTimezoneIds_leavesUnquotedTzidUntouched(): void
+    {
+        $ics = 'DTSTART;TZID=Romance Standard Time:20260617T110000';
+        $result = normalizeTimezoneIds($ics);
+        $this->assertSame($ics, $result);
+    }
+
+    // -------------------------------------------------------------------------
     // outputIcsContent
     // -------------------------------------------------------------------------
 

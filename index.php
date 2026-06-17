@@ -21,12 +21,50 @@ if (!defined('TESTING')) {
         validateUrl($icsUrl);
         validateFileContent($icsUrl);
         $icsContent = fetchIcsContent($icsUrl, MAX_FILE_SIZE);
+        $icsContent = normalizeTimezoneIds($icsContent);
         $missingTimezones = readMissingTimezones(MISSING_TIMEZONES_FILE);
         $modifiedIcsContent = insertMissingTimezones($icsContent, $missingTimezones);
         outputIcsContent($modifiedIcsContent);
     } catch (Exception $e) {
         die('Error: ' . $e->getMessage());
     }
+}
+
+// Strips quotes from TZID parameter values and maps Windows display names to canonical IDs
+function normalizeTimezoneIds(string $icsContent): string
+{
+    static $map = [
+        '(UTC-12:00) International Date Line West'                        => 'Dateline Standard Time',
+        '(UTC-11:00) Coordinated Universal Time-11'                       => 'UTC-11',
+        '(UTC-10:00) Hawaii'                                              => 'Hawaiian Standard Time',
+        '(UTC-09:00) Alaska'                                              => 'Alaskan Standard Time',
+        '(UTC-08:00) Pacific Time (US & Canada)'                          => 'Pacific Standard Time',
+        '(UTC-07:00) Mountain Time (US & Canada)'                         => 'Mountain Standard Time',
+        '(UTC-07:00) Arizona'                                             => 'US Mountain Standard Time',
+        '(UTC-06:00) Central Time (US & Canada)'                          => 'Central Standard Time',
+        '(UTC-06:00) Guadalajara, Mexico City, Monterrey'                 => 'Central Standard Time (Mexico)',
+        '(UTC-05:00) Eastern Time (US & Canada)'                          => 'Eastern Standard Time',
+        '(UTC-04:00) Georgetown, La Paz, Manaus, San Juan'                => 'SA Western Standard Time',
+        '(UTC-03:00) Brasilia'                                            => 'E. South America Standard Time',
+        '(UTC+00:00) Dublin, Edinburgh, Lisbon, London'                   => 'GMT Standard Time',
+        '(UTC+00:00) Monrovia, Reykjavik'                                 => 'Greenwich Standard Time',
+        '(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna'    => 'W. Europe Standard Time',
+        '(UTC+01:00) Brussels, Copenhagen, Madrid, Paris'                 => 'Romance Standard Time',
+        '(UTC+01:00) Belgrade, Bratislava, Budapest, Ljubljana, Prague'   => 'Central Europe Standard Time',
+        '(UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb'                    => 'Central European Standard Time',
+        '(UTC+02:00) Athens, Bucharest'                                   => 'GTB Standard Time',
+        '(UTC+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius'       => 'FLE Standard Time',
+        '(UTC+08:00) Perth'                                               => 'Australian Western Standard Time',
+    ];
+
+    return preg_replace_callback(
+        '/TZID="([^"]+)"/',
+        function (array $matches) use ($map): string {
+            $tzid = $matches[1];
+            return 'TZID=' . ($map[$tzid] ?? $tzid);
+        },
+        $icsContent
+    );
 }
 
 // Function to get the ICS URL from the query parameter
